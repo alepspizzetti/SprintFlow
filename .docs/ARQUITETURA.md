@@ -304,6 +304,8 @@ O catálogo carregado do disco não é substituído na tela até recarregar a p�
 
 Nenhum comando de escrita é usado. A credencial é a sessão do `az login`; o projeto não lê nem guarda token. `AZURE_CORE_ONLY_SHOW_ERRORS=true` é definido no processo filho.
 
+A API só aceita os hosts `localhost` e `127.0.0.1` (`AllowedHosts` em `appsettings.json`). Requisições com outro `Host` recebem 400, o que impede um site externo de ler os dados via DNS rebinding.
+
 ## 10. CI e proteção da `master`
 
 ```mermaid
@@ -355,5 +357,6 @@ O ruleset é aplicado no GitHub com `gh api` (ver `CONTRIBUTING.md`); o arquivo 
 | Bugs como filhos da US | `IsStory`, `IsTask` | Conferido via `/timeline` e `az boards work-item show` nos itens da sprint atual. | — |
 | Rotas `/` e `/api/settings` | `Program.cs` | `curl` retornou `index.html` e `{ team }`. | — |
 | Tela | `App.tsx` | Screenshot headless 1920×1080 com USs recolhidas e expandidas. | Clique, modal e popover não testados. |
-| CI e ruleset | `.github/` | **Não executado:** o repositório ainda não existe no GitHub. Só a sintaxe de YAML e JSON foi validada. | Nomes dos checks dependem dos jobs `API` e `Web`. |
-| Previsão e parser | `ObjectivePlanningEngine`, `AzureDevOpsJsonParser` | **Não executado:** `dotnet test` termina sem rodar os testes; testhost acusa `Microsoft.CodeCoverage` ausente e o ASP.NET Core 10 não está instalado no sistema. | Cobertos só por leitura e pelos 10 testes existentes, não rodados aqui. |
+| CI e ruleset | `.github/` | Primeiro run do CI passou (jobs `API` e `Web`). Ruleset `Proteger master` aplicado e ativo no GitHub. | Nomes dos checks dependem dos jobs `API` e `Web`. |
+| Filtro de host | `appsettings.json` (`AllowedHosts`) | `curl` com `Host: evil.com` retornou 400; `127.0.0.1:5002` e `localhost:5002` retornaram 200. | — |
+| Previsão e parser | `ObjectivePlanningEngine`, `AzureDevOpsJsonParser` | `dotnet test` no CI: 10 testes, 10 aprovados. | Localmente o `dotnet test` não roda sem o ASP.NET Core 10 instalado. |
