@@ -55,7 +55,7 @@ A `master` só recebe mudanças por pull request. As regras ficam no ruleset `.g
 
 - push direto, force-push e exclusão da branch são bloqueados;
 - o PR precisa de 1 aprovação do code owner (`.github/CODEOWNERS`); aprovações antigas caem a cada novo push;
-- os checks **API** (`dotnet build` + `dotnet test`) e **Web** (`npm ci` + `npm run build`) do workflow `.github/workflows/ci.yml` precisam passar, com a branch atualizada em relação à `master`;
+- os checks **API** (restauração de dependências → compilação da solução → testes sem recompilar) e **Web** (instalação de dependências → verificação de tipos → build Vite) do workflow `.github/workflows/ci.yml` precisam passar, com a branch atualizada em relação à `master`. Os jobs executam em paralelo, com etapas nomeadas para identificar falhas;
 - administradores do repositório podem fazer merge do próprio PR sem a aprovação, mas ainda via PR.
 
 Para aplicar ou reaplicar o ruleset (requer permissão de administrador):
