@@ -1,20 +1,20 @@
-namespace SprintFlow.Planning;
+namespace SprintFlow.Forecast;
 
-public sealed class ObjectivePlanningEngine
+public sealed class ForecastEngine
 {
-    public PlanningResult Build(PlanningInput input)
+    public ForecastResult CalcularPrevisao(ForecastInput input)
     {
         var members = input.Members.ToDictionary(member => member.Id);
         var storyOrder = input.Stories.ToDictionary(story => story.Id, story => story.Order);
         var cursors = input.Members.ToDictionary(
             member => member.Id,
-            member => new MemberCursor(input.PlanningDate, member.DailyCapacityHours));
-        var planned = new Dictionary<int, PlannedTask>();
+            member => new MemberCursor(input.ForecastDate, member.DailyCapacityHours));
+        var forecasts = new Dictionary<int, TaskForecast>();
         var blockages = new List<FlowBlockage>();
         var ignored = new List<int>();
 
         var tasks = input.Tasks
-            .OrderBy(task => StageOrder(task.Stage))
+            .OrderBy(task => ObterOrdemDaEtapa(task.Stage))
             .ThenBy(task => storyOrder.GetValueOrDefault(task.StoryId, decimal.MaxValue))
             .ThenBy(task => task.Order ?? decimal.MaxValue)
             .ThenBy(task => task.Id)
@@ -22,9 +22,9 @@ public sealed class ObjectivePlanningEngine
 
         foreach (var task in tasks)
         {
-            if (IsDone(task))
+            if (EstaConcluida(task))
             {
-                planned[task.Id] = new PlannedTask(task.Id, task.StoryId, task.Title,
+                forecasts[task.Id] = new TaskForecast(task.Id, task.StoryId, task.Title,
                     task.AssignedMemberId ?? string.Empty, task.Stage, task.State, [], null, null, false);
                 continue;
             }
@@ -41,42 +41,42 @@ public sealed class ObjectivePlanningEngine
             var related = input.Tasks.Where(item => item.StoryId == task.StoryId).ToList();
             if (task.Stage == WorkStage.Frontend)
             {
-                var backend = related.Where(item => item.Stage == WorkStage.Backend && !IsDone(item)).ToList();
-                var backendEnd = backend.Count == 0 ? (Date: cursor.Date, TaskId: (int?)null) : LatestEnd(backend, planned);
+                var backend = related.Where(item => item.Stage == WorkStage.Backend && !EstaConcluida(item)).ToList();
+                var backendEnd = backend.Count == 0 ? (Date: cursor.Date, TaskId: (int?)null) : ObterUltimoTermino(backend, forecasts);
                 var backendAvailable = backend.Count == 0 ? cursor.Date : backendEnd.Date.AddDays(1);
-                AddBlockages(blockages, cursor, member, task, backendAvailable, backendEnd.TaskId,
+                AdicionarBloqueios(blockages, cursor, member, task, backendAvailable, backendEnd.TaskId,
                     "Frontend aguardando conclusão do Backend.");
-                segments.AddRange(Allocate(cursor, member, task.RemainingWork, backendAvailable));
+                segments.AddRange(Alocar(cursor, member, task.RemainingWork, backendAvailable));
             }
             else if (task.Stage == WorkStage.QA)
             {
-                var development = related.Where(item => item.Stage is WorkStage.Backend or WorkStage.Frontend && !IsDone(item)).ToList();
-                var developmentEnd = development.Count == 0 ? (Date: cursor.Date, TaskId: (int?)null) : LatestEnd(development, planned);
+                var development = related.Where(item => item.Stage is WorkStage.Backend or WorkStage.Frontend && !EstaConcluida(item)).ToList();
+                var developmentEnd = development.Count == 0 ? (Date: cursor.Date, TaskId: (int?)null) : ObterUltimoTermino(development, forecasts);
                 var qaAvailable = development.Count == 0 ? cursor.Date : developmentEnd.Date.AddDays(1);
-                AddBlockages(blockages, cursor, member, task, qaAvailable, developmentEnd.TaskId,
+                AdicionarBloqueios(blockages, cursor, member, task, qaAvailable, developmentEnd.TaskId,
                     "QA aguardando todas as tasks de Backend e Frontend da User Story.");
-                segments.AddRange(Allocate(cursor, member, task.RemainingWork, qaAvailable));
+                segments.AddRange(Alocar(cursor, member, task.RemainingWork, qaAvailable));
             }
             else
             {
-                segments.AddRange(Allocate(cursor, member, task.RemainingWork, cursor.Date));
+                segments.AddRange(Alocar(cursor, member, task.RemainingWork, cursor.Date));
             }
 
             DateOnly? start = segments.Count == 0 ? null : segments.Min(segment => segment.Date);
             DateOnly? end = segments.Count == 0 ? null : segments.Max(segment => segment.Date);
-            planned[task.Id] = new PlannedTask(task.Id, task.StoryId, task.Title, member.Id, task.Stage,
+            forecasts[task.Id] = new TaskForecast(task.Id, task.StoryId, task.Title, member.Id, task.Stage,
                 task.State, segments, start, end, end > input.SprintEnd);
         }
 
-        return new PlanningResult(
-            planned.Values.OrderBy(task => task.StartDate).ThenBy(task => task.Id).ToList(),
+        return new ForecastResult(
+            forecasts.Values.OrderBy(task => task.StartDate).ThenBy(task => task.Id).ToList(),
             blockages.OrderBy(item => item.Date).ThenBy(item => item.AffectedMemberId).ToList(),
             ignored);
     }
 
-    private static IReadOnlyList<AllocationSegment> Allocate(
+    private static IReadOnlyList<AllocationSegment> Alocar(
         MemberCursor cursor,
-        PlanningMember member,
+        ForecastMember member,
         decimal requestedHours,
         DateOnly notBefore)
     {
@@ -90,7 +90,7 @@ public sealed class ObjectivePlanningEngine
 
         while (remaining > 0)
         {
-            MoveToWorkingDay(cursor, member);
+            AvancarParaDiaUtil(cursor, member);
             var hours = Math.Min(remaining, cursor.RemainingHours);
             segments.Add(new AllocationSegment(cursor.Date, hours));
             remaining -= hours;
@@ -105,11 +105,11 @@ public sealed class ObjectivePlanningEngine
         return segments;
     }
 
-    private static void AddBlockages(
+    private static void AdicionarBloqueios(
         ICollection<FlowBlockage> output,
         MemberCursor cursor,
-        PlanningMember member,
-        PlanningTask affectedTask,
+        ForecastMember member,
+        ForecastTask affectedTask,
         DateOnly dependencyEnd,
         int? blockingTaskId,
         string cause)
@@ -118,43 +118,43 @@ public sealed class ObjectivePlanningEngine
         var available = cursor.RemainingHours;
         while (date < dependencyEnd)
         {
-            if (IsWorkingDay(date, member) && available > 0)
+            if (EhDiaUtil(date, member) && available > 0)
                 output.Add(new FlowBlockage(member.Id, affectedTask.Id, blockingTaskId, date, available, cause));
             date = date.AddDays(1);
             available = member.DailyCapacityHours;
         }
     }
 
-    private static (DateOnly Date, int? TaskId) LatestEnd(
-        IReadOnlyList<PlanningTask> dependencies,
-        IReadOnlyDictionary<int, PlannedTask> planned)
+    private static (DateOnly Date, int? TaskId) ObterUltimoTermino(
+        IReadOnlyList<ForecastTask> dependencies,
+        IReadOnlyDictionary<int, TaskForecast> forecasts)
     {
         var latest = dependencies
-            .Select(task => planned.TryGetValue(task.Id, out var plan) && plan.EndDate is not null
-                ? (Date: plan.EndDate.Value, TaskId: (int?)task.Id)
+            .Select(task => forecasts.TryGetValue(task.Id, out var forecast) && forecast.EndDate is not null
+                ? (Date: forecast.EndDate.Value, TaskId: (int?)task.Id)
                 : (Date: DateOnly.MinValue, TaskId: (int?)null))
             .OrderByDescending(item => item.Date)
             .FirstOrDefault();
         return latest.Date == DateOnly.MinValue ? (DateOnly.MinValue, null) : latest;
     }
 
-    private static void MoveToWorkingDay(MemberCursor cursor, PlanningMember member)
+    private static void AvancarParaDiaUtil(MemberCursor cursor, ForecastMember member)
     {
-        while (!IsWorkingDay(cursor.Date, member))
+        while (!EhDiaUtil(cursor.Date, member))
         {
             cursor.Date = cursor.Date.AddDays(1);
             cursor.RemainingHours = cursor.DailyCapacity;
         }
     }
 
-    private static bool IsWorkingDay(DateOnly date, PlanningMember member) =>
+    private static bool EhDiaUtil(DateOnly date, ForecastMember member) =>
         date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday &&
         !(member.DaysOff?.Contains(date) ?? false);
 
-    private static bool IsDone(PlanningTask task) =>
+    private static bool EstaConcluida(ForecastTask task) =>
         string.Equals(task.State, "Done", StringComparison.OrdinalIgnoreCase);
 
-    private static int StageOrder(WorkStage stage) => stage switch
+    private static int ObterOrdemDaEtapa(WorkStage stage) => stage switch
     {
         WorkStage.Backend => 0,
         WorkStage.Frontend => 1,

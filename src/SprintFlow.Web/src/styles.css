@@ -32,16 +32,19 @@ main{padding:14px 24px}
 .sync{padding:7px 12px;color:#4be3f4;background:transparent;border:1px solid #4be3f4;font:600 9px ui-monospace,monospace;letter-spacing:1px}
 .sync:hover{background:#4be3f41a}
 .sync:disabled{opacity:.5;cursor:wait}
-.board-scroll{overflow:auto;max-height:calc(100vh - 190px)}
-html,.board-scroll{scrollbar-width:none}
-html::-webkit-scrollbar,.board-scroll::-webkit-scrollbar{display:none}
-.board-grid{width:100%}
+.board-scroll{overflow:auto;max-height:calc(100vh - 190px);container-type:inline-size;scrollbar-width:thin;scrollbar-color:#33435c #0c1220}
+html{scrollbar-width:none}
+html::-webkit-scrollbar{display:none}
+.board-grid{width:calc(320px + (100cqw - 320px) / 5 * var(--days))}
 .board-head,.story{display:grid;grid-template-columns:320px 1fr}
 .board-head{position:sticky;top:0;z-index:6;background:#0f1626;border-bottom:1px solid #1f2a3d;color:#7f93a8;font:9px ui-monospace,monospace;letter-spacing:1px}
 .board-head>div:first-child{position:sticky;left:0;z-index:7;padding:12px;background:#0f1626;border-right:1px solid #1f2a3d}
 .days{display:grid;grid-template-columns:repeat(var(--days),1fr)}
 .days div{padding:12px 4px;text-align:center;border-right:1px solid #1a2436}
 .days div.today{color:#4be3f4;background:#4be3f412}
+.days div.team-day-off-day{color:#d9979f;background:#b14d5b26}
+.board-head>div:first-child:has(.story-toggle){padding:0}
+.story-toggle{width:100%;height:100%;padding:12px;border:0;background:transparent;color:inherit;font:inherit;letter-spacing:inherit;text-align:left}
 .story{border-bottom:1px solid #1a2436}
 .story-label{position:sticky;left:0;z-index:4;display:flex;flex-direction:column;gap:4px;padding:10px 12px 10px 14px;text-align:left;color:#e9eef6;background:#0e1524;border:0;border-left:3px solid #3d7bd9;border-right:1px solid #1f2a3d}
 .story-label:hover{background:#131c2f}
@@ -51,6 +54,7 @@ html::-webkit-scrollbar,.board-scroll::-webkit-scrollbar{display:none}
 .story.collapsed .story-label{padding:6px 12px 6px 14px;border-left-color:#356b68}
 .story.collapsed .story-title{-webkit-line-clamp:1;color:#a9b8c9;font-weight:500}
 .lanes{position:relative;min-height:100%;background-image:linear-gradient(to right,#1a2436 1px,transparent 1px);background-size:calc(100% / var(--days)) 100%}
+.team-day-off{position:absolute;top:0;bottom:0;z-index:3;background:#b14d5b22;pointer-events:none}
 .now{position:absolute;top:0;bottom:0;z-index:3;width:2px;background:#4be3f4aa;pointer-events:none}
 .bar{position:absolute;z-index:2;height:38px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;overflow:hidden;padding:4px 6px 4px 8px;text-align:left;border:0;border-left:3px solid #3d7bd9;font:9.5px ui-monospace,monospace;line-height:1.35}
 .bar:hover,.bar:focus-visible{outline:1px solid #eff7ff;z-index:5}
@@ -58,25 +62,34 @@ html::-webkit-scrollbar,.board-scroll::-webkit-scrollbar{display:none}
 .bar .pause{background:repeating-linear-gradient(45deg,#0007 0 4px,transparent 4px 8px)}
 .bar .forecast{background:#4be3f42b;border-left:1px dashed #4be3f4}
 .bar .blocked{top:auto;height:4px;background:#f07887}
+.individual-day-off{background:repeating-linear-gradient(135deg,#b14d5b70 0 4px,#b14d5b35 4px 8px)}
 .owner{position:relative;flex:none;max-width:100%;overflow:hidden;padding:1px 4px;color:#e9f3ff;white-space:nowrap;text-overflow:ellipsis}
+.story-status{display:inline-block;vertical-align:middle}
+.story-status[data-state="testing"]{color:#14130a}
 .bar-text{position:relative;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .bar-done{background:#7a7433;color:#14130a}
 .bar-active{background:#2f7d5b;color:#f2fff8}
 .bar-review{background:#6a539a;color:#f6f2ff}
 .bar-paused{background:#9a6a2c;color:#fff8ee}
-.bar-planned{background:#4be3f41f;color:#bfefff;border:1px dashed #4be3f4;border-left:3px solid #4be3f4}
+.bar-forecast{background:#4be3f41f;color:#bfefff;border:1px dashed #4be3f4;border-left:3px solid #4be3f4}
 .bar-idle{background:#1c2536;color:#9fb3c8;border:1px dashed #44546d;border-left:3px solid #44546d}
 .legend{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-top:10px;color:#8ea2b6;font-size:11px}
 .legend span{display:flex;align-items:center;gap:6px}
 .legend i{display:inline-block;width:14px;height:10px}
 .legend i.bar-paused{background:repeating-linear-gradient(45deg,#0007 0 3px,transparent 3px 6px),#9a6a2c}
 .legend i.legend-blocked{height:4px;background:#f07887}
+.legend-team-day-off{background:#b14d5b40}
 .synced{color:#7f93a8;font:9px ui-monospace,monospace}
 .modal-backdrop{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:20px;background:#050b14c9}
 .detail{position:relative;width:min(600px,100%);max-height:90vh;overflow:auto;padding:28px;background:#141c2e;border:1px solid #33435c;border-radius:8px;box-shadow:0 20px 60px #0008}
 .detail h2{font:700 24px Arial,sans-serif;margin:6px 0}
 .detail p{color:#c1d0de;line-height:1.5}
 .detail a{color:#60eaff}
+.story-description{width:100%;height:280px;border:0;background:#141c2e}
+.story-tasks{list-style:none;padding:0}
+.story-tasks li{padding:10px 0;border-bottom:1px solid #33435c}
+.story-tasks button{padding:0;border:0;background:transparent;color:#60eaff;text-align:left}
+.story-tasks p{margin:6px 0 0;font-size:12px}
 .close{position:absolute;right:16px;top:12px;background:transparent;border:0;color:#d7e7f3;font-size:28px}
 .blockage-detail{padding:14px;background:#3d1f2a;border-left:3px solid #f07887}
 .blockage-detail p{margin:7px 0 0}

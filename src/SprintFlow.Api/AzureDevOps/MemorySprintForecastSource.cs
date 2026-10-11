@@ -4,11 +4,11 @@ using SprintFlow.Timeline;
 
 namespace SprintFlow.AzureDevOps;
 
-public sealed class MemorySprintPlanningSource(AzureDevOpsSprintPlanningSource azure, AzureDevOpsOptions options,
-    ILogger<MemorySprintPlanningSource> logger) : ISprintPlanningSource, ISprintPlanningRefresher
+public sealed class MemorySprintForecastSource(AzureDevOpsSprintForecastSource azure, AzureDevOpsOptions options,
+    ILogger<MemorySprintForecastSource> logger) : ISprintForecastSource, ISprintForecastRefresher
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly ConcurrentDictionary<string, SprintPlanningDataset> snapshots = new();
+    private readonly ConcurrentDictionary<string, SprintForecastDataset> snapshots = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> sprintLocks = new();
     private readonly SemaphoreSlim catalogLock = new(1, 1);
     private readonly string cacheDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -16,9 +16,9 @@ public sealed class MemorySprintPlanningSource(AzureDevOpsSprintPlanningSource a
     private IReadOnlyList<SprintSummary>? catalog;
 
     private string CatalogPath => Path.Combine(cacheDirectory, "sprints.json");
-    private string SprintPath(string sprintId) => Path.Combine(cacheDirectory, "sprint-" + sprintId + ".json");
+    private string ObterCaminhoDaSprint(string sprintId) => Path.Combine(cacheDirectory, "sprint-" + sprintId + ".json");
 
-    public async Task<IReadOnlyList<SprintSummary>> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<SprintSummary>> ListarAsync(CancellationToken cancellationToken = default)
     {
         if (catalog is not null) return catalog;
         await catalogLock.WaitAsync(cancellationToken);
@@ -26,17 +26,17 @@ public sealed class MemorySprintPlanningSource(AzureDevOpsSprintPlanningSource a
         {
             if (catalog is null)
             {
-                catalog = await ReadAsync<List<SprintSummary>>(CatalogPath, cancellationToken);
-                if (catalog is null) catalog = await FetchCatalogAsync(cancellationToken);
-                else _ = RefreshCatalogAsync();
-                _ = WarmAsync(catalog);
+                catalog = await LerAsync<List<SprintSummary>>(CatalogPath, cancellationToken);
+                if (catalog is null) catalog = await BuscarCatalogoAsync(cancellationToken);
+                else _ = AtualizarCatalogoAsync();
+                _ = PreCarregarAsync(catalog);
             }
             return catalog;
         }
         finally { catalogLock.Release(); }
     }
 
-    public async Task<SprintPlanningDataset?> GetAsync(string sprintId, CancellationToken cancellationToken = default)
+    public async Task<SprintForecastDataset?> ObterAsync(string sprintId, CancellationToken cancellationToken = default)
     {
         if (snapshots.TryGetValue(sprintId, out var snapshot)) return snapshot;
         var gate = sprintLocks.GetOrAdd(sprintId, _ => new SemaphoreSlim(1, 1));
@@ -44,21 +44,21 @@ public sealed class MemorySprintPlanningSource(AzureDevOpsSprintPlanningSource a
         try
         {
             if (snapshots.TryGetValue(sprintId, out snapshot)) return snapshot;
-            snapshot = await ReadAsync<SprintPlanningDataset>(SprintPath(sprintId), cancellationToken)
-                ?? await FetchSprintAsync(sprintId, cancellationToken);
+            snapshot = await LerAsync<SprintForecastDataset>(ObterCaminhoDaSprint(sprintId), cancellationToken)
+                ?? await BuscarSprintAsync(sprintId, cancellationToken);
             if (snapshot is not null) snapshots[sprintId] = snapshot;
             return snapshot;
         }
         finally { gate.Release(); }
     }
 
-    public async Task<bool> RefreshAsync(string sprintId, CancellationToken cancellationToken = default)
+    public async Task<bool> AtualizarAsync(string sprintId, CancellationToken cancellationToken = default)
     {
         var gate = sprintLocks.GetOrAdd(sprintId, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var fresh = await FetchSprintAsync(sprintId, cancellationToken);
+            var fresh = await BuscarSprintAsync(sprintId, cancellationToken);
             if (fresh is null) return false;
             snapshots[sprintId] = fresh;
             return true;
@@ -66,31 +66,31 @@ public sealed class MemorySprintPlanningSource(AzureDevOpsSprintPlanningSource a
         finally { gate.Release(); }
     }
 
-    private async Task<IReadOnlyList<SprintSummary>> FetchCatalogAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<SprintSummary>> BuscarCatalogoAsync(CancellationToken cancellationToken)
     {
-        var fresh = (await azure.ListAsync(cancellationToken))
+        var fresh = (await azure.ListarAsync(cancellationToken))
             .Where(sprint => sprint.Status is "Current" or "Future")
             .ToList();
-        await WriteAsync(CatalogPath, fresh, cancellationToken);
+        await GravarAsync(CatalogPath, fresh, cancellationToken);
         return fresh;
     }
 
-    private async Task RefreshCatalogAsync()
+    private async Task AtualizarCatalogoAsync()
     {
-        try { catalog = await FetchCatalogAsync(CancellationToken.None); }
+        try { catalog = await BuscarCatalogoAsync(CancellationToken.None); }
         catch (Exception exception) { logger.LogWarning(exception, "Falha ao atualizar o catálogo de sprints em segundo plano."); }
     }
 
-    private async Task<SprintPlanningDataset?> FetchSprintAsync(string sprintId, CancellationToken cancellationToken)
+    private async Task<SprintForecastDataset?> BuscarSprintAsync(string sprintId, CancellationToken cancellationToken)
     {
-        var fresh = await azure.GetAsync(sprintId, cancellationToken);
+        var fresh = await azure.ObterAsync(sprintId, cancellationToken);
         if (fresh is null) return null;
         fresh = fresh with { SyncedAt = DateTimeOffset.Now };
-        await WriteAsync(SprintPath(sprintId), fresh, cancellationToken);
+        await GravarAsync(ObterCaminhoDaSprint(sprintId), fresh, cancellationToken);
         return fresh;
     }
 
-    private async Task<T?> ReadAsync<T>(string path, CancellationToken cancellationToken) where T : class
+    private async Task<T?> LerAsync<T>(string path, CancellationToken cancellationToken) where T : class
     {
         if (!File.Exists(path)) return null;
         try
@@ -105,7 +105,7 @@ public sealed class MemorySprintPlanningSource(AzureDevOpsSprintPlanningSource a
         }
     }
 
-    private async Task WriteAsync<T>(string path, T value, CancellationToken cancellationToken)
+    private async Task GravarAsync<T>(string path, T value, CancellationToken cancellationToken)
     {
         try
         {
@@ -121,11 +121,11 @@ public sealed class MemorySprintPlanningSource(AzureDevOpsSprintPlanningSource a
         }
     }
 
-    private async Task WarmAsync(IReadOnlyList<SprintSummary> sprints)
+    private async Task PreCarregarAsync(IReadOnlyList<SprintSummary> sprints)
     {
         foreach (var sprint in sprints.OrderBy(item => item.Status == "Current" ? 0 : 1).ThenBy(item => item.StartDate))
         {
-            try { await GetAsync(sprint.Id); }
+            try { await ObterAsync(sprint.Id); }
             catch (Exception) { /* The page or manual sync can retry this sprint. */ }
         }
     }

@@ -1,18 +1,20 @@
-namespace SprintFlow.Planning;
+using System.Text.Json.Serialization;
+
+namespace SprintFlow.Forecast;
 
 public enum SquadRole { Backend, Frontend, QA, PD, EL, GPM, PM }
 public enum WorkStage { Backend, Frontend, QA, Other }
 
-public sealed record PlanningMember(
+public sealed record ForecastMember(
     string Id,
     string Name,
     SquadRole Role,
     decimal DailyCapacityHours,
     HashSet<DateOnly>? DaysOff = null);
 
-public sealed record PlanningStory(int Id, string Title, decimal Order);
+public sealed record ForecastStory(int Id, string Title, decimal Order, string State = "Unknown", string? Description = null);
 
-public sealed record PlanningTask(
+public sealed record ForecastTask(
     int Id,
     int StoryId,
     string Title,
@@ -22,17 +24,17 @@ public sealed record PlanningTask(
     string State,
     decimal? Order = null);
 
-public sealed record PlanningInput(
+public sealed record ForecastInput(
     DateOnly SprintStart,
     DateOnly SprintEnd,
-    DateOnly PlanningDate,
-    IReadOnlyList<PlanningMember> Members,
-    IReadOnlyList<PlanningStory> Stories,
-    IReadOnlyList<PlanningTask> Tasks);
+    [property: JsonPropertyName("planningDate")] DateOnly ForecastDate,
+    IReadOnlyList<ForecastMember> Members,
+    IReadOnlyList<ForecastStory> Stories,
+    IReadOnlyList<ForecastTask> Tasks);
 
 public sealed record AllocationSegment(DateOnly Date, decimal Hours);
 
-public sealed record PlannedTask(
+public sealed record TaskForecast(
     int Id,
     int StoryId,
     string Title,
@@ -52,7 +54,7 @@ public sealed record FlowBlockage(
     decimal BlockedHours,
     string Cause);
 
-public sealed record PlanningResult(
-    IReadOnlyList<PlannedTask> Tasks,
+public sealed record ForecastResult(
+    IReadOnlyList<TaskForecast> Tasks,
     IReadOnlyList<FlowBlockage> Blockages,
     IReadOnlyList<int> IgnoredTaskIds);

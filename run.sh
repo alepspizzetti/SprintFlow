@@ -6,9 +6,15 @@ runtime_dir="$project_root/.run"
 runtime_bin="${SPRINTFLOW_DOTNET_RUNTIME:-dotnet}"
 mkdir -p "$runtime_dir/dotnet-home"
 
-if ! "$runtime_bin" --list-runtimes | grep -q '^Microsoft.AspNetCore.App 10\.'; then
-  echo "Instale o runtime ASP.NET Core 10 para executar o SprintFlow." >&2
-  exit 1
+if ! "$runtime_bin" --list-runtimes | grep '^Microsoft.AspNetCore.App 10\.' >/dev/null; then
+  if [[ -z "${SPRINTFLOW_DOTNET_RUNTIME:-}" ]] && command -v pacman >/dev/null 2>&1; then
+    echo "Runtime ASP.NET Core 10 ausente. Instalando com pacman (pode solicitar sua senha)."
+    sudo pacman -S --needed aspnet-runtime-10.0
+  fi
+  if ! "$runtime_bin" --list-runtimes | grep '^Microsoft.AspNetCore.App 10\.' >/dev/null; then
+    echo "Instale o runtime ASP.NET Core 10 para executar o SprintFlow ou informe o executável em SPRINTFLOW_DOTNET_RUNTIME." >&2
+    exit 1
+  fi
 fi
 
 if [[ -f "$runtime_dir/backend.pid" ]] && kill -0 "$(<"$runtime_dir/backend.pid")" 2>/dev/null; then
