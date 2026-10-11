@@ -1,53 +1,57 @@
-# AGENTS.md
+# SprintFlow — índice para agentes
 
-Guia para agentes de código neste repositório. Leia também o `README.md` e a arquitetura em `.docs/ARQUITETURA.md`.
+Todas as instruções compartilhadas ficam em `.ai/`. Este arquivo orienta sua leitura; os caminhos partem da raiz do repositório.
 
-## Visão geral
+## Leitura obrigatória
 
-- `src/SprintFlow.Api`: backend ASP.NET Core (.NET 10, minimal APIs em `Program.cs`).
-  - `AzureDevOps/AzureDevOpsCliClient.cs`: única porta para o Azure DevOps, sempre via `az` CLI. Não use chamadas HTTP diretas.
-  - `AzureDevOps/AzureDevOpsSprintPlanningSource.cs`: converte work items em `PlanningInput` (USs, tasks, membros, capacidade) e monta o histórico de atividade a partir das revisões.
-  - `AzureDevOps/MemorySprintPlanningSource.cs`: cache em memória + disco (`~/.local/share/SprintFlow/<time>/`). Ordem de leitura: memória, disco, Azure. Todo fetch no Azure regrava o arquivo com escrita atômica.
-  - `Planning/ObjectivePlanningEngine.cs`: previsão de alocação, término e bloqueios.
-  - `Timeline/`: contratos da API e `TimelineService`, que monta a resposta da tela.
-- `src/SprintFlow.Web`: React + Vite + TypeScript, tudo em `src/App.tsx` e `src/styles.css`.
-- `tests/SprintFlow.Tests`: xUnit.
+Antes de qualquer tarefa, leia `.ai/rules/general.md`, `.ai/rules/code-style.md` e `.ai/rules/security.md`. Depois, carregue somente os documentos relacionados ao pedido.
 
-## Regras de domínio
+## O que ler por tarefa
 
-- O Azure DevOps é somente leitura. Nunca escreva no Azure.
-- A ordem exibida segue o backlog do Azure: `Microsoft.VSTS.Common.StackRank`, com fallback para `BacklogPriority`. USs por ordem; tasks dentro da US por ordem e depois por id.
-- `User Story` e `Product Backlog Item` são USs. `Task` e `Bug` são itens filhos da US (`System.Parent`). Itens sem pai são ignorados.
-- Estados são normalizados para `Todo`, `In Progress`, `Review` e `Done`.
-- O histórico de atividade só é carregado para a sprint atual.
+| Quando | Arquivos obrigatórios |
+| --- | --- |
+| Backend, API, Azure, cache ou previsão | `.ai/rules/backend.md`, `.ai/rules/domain.md` |
+| Tela, timeline ou estilos | `.ai/rules/frontend.md`, `.ai/rules/domain.md` |
+| Mudança de comportamento ou execução de checks | `.ai/rules/testing.md` |
+| Pastas, componentes, rotas, fluxos, cache, integrações ou scripts de execução | `.ai/rules/documentation.md` |
+| Branches, commits, PRs ou CI | `.ai/rules/git.md` |
+| Implementação ou correção | `.ai/workflows/implement.md`; para bugs, também `.ai/workflows/fix-bug.md` |
+| Revisão de código | `.ai/workflows/review.md` |
+| Lentidão ou otimização | `.ai/workflows/performance.md` |
+| Validação, build ou reinício | `.ai/workflows/validate.md` |
+| Organização das instruções de IA | `.ai/README.md` |
 
-## Frontend
+## Skills e perfis compartilhados
 
-- Timeline por US: cada coluna de dia representa 24h; barras são posicionadas por `(hora + minuto/60) / 24`.
-- Barras empacotadas em faixas na ordem do DevOps. Barra: primeira linha `#id título`, segunda linha o responsável.
-- Preferência "recolher USs concluídas" fica em `localStorage` (`sprintflow.collapseDone`).
-- Ao abrir uma sprint, a tela mostra o cache e dispara um sync em segundo plano se o dado for anterior à abertura da página.
+Leia o `SKILL.md` correspondente quando o pedido se enquadrar na descrição:
 
-## Convenções
+| Pedido | Documento |
+| --- | --- |
+| Verificar alterações, build ou execução | `.ai/skills/sprintflow-validate/SKILL.md` |
+| Revisar diff, branch ou arquivos | `.ai/skills/sprintflow-review/SKILL.md` |
+| Atualizar documentação de estrutura, fluxo ou domínio | `.ai/skills/sprintflow-docs/SKILL.md` |
 
-- Não adicione comentários no código.
-- Mantenha o menor diff que cumpra o pedido; não misture refactors.
-- Combine com o usuário antes de mudanças de design ou de comportamento fora do pedido.
-- Textos de interface e mensagens em português.
-- Qualquer alteração na estrutura do projeto (pastas, projetos, camadas, componentes, rotas, fluxos, cache, integrações ou scripts `run.sh`/`stop.sh`) deve atualizar `.docs/ARQUITETURA.md` na mesma mudança, junto com este arquivo e o `README.md` quando forem afetados.
+Perfis de revisão e investigação ficam em `.ai/agents/reviewer.md` e `.ai/agents/investigator.md`. Siga o perfil pertinente diretamente; delegue somente quando a tarefa ou uma instrução aplicável pedir delegação.
 
-## Repositório
+## Padrão de commits
 
-- A `master` é protegida pelo ruleset `.github/rulesets/master.json`: só PR, 1 aprovação do code owner e checks `API` e `Web` do `.github/workflows/ci.yml`.
-- Se renomear os jobs do CI, atualize os `context` do ruleset.
+- Use esse layout para criar o commit
+- `Feat, Fix, Perf` são os tipos disponiveis
+- O titulo deve resumir o que foi feito
+- As descrições das implementações devem ser breves e diretas
+```markdown
+{tipo}:{breve titulo}
 
-## Comandos
-
-```bash
-./run.sh                                   # build front + back e sobe em http://127.0.0.1:5002
-./stop.sh                                  # encerra
-dotnet test tests/SprintFlow.Tests         # testes
-cd src/SprintFlow.Web && npm run build    # build do front
+-> {Feature}: {descriação do que foi feito}
+-> {Feature}: {descriação do que foi feito}
 ```
 
-Se o `run.sh` acusar falta do ASP.NET Core 10, use `SPRINTFLOW_DOTNET_RUNTIME=/caminho/para/dotnet ./run.sh`. Depois de alterar o frontend, rode `./stop.sh && ./run.sh` para o backend servir o build novo.
+## Outros recursos
+
+- Organização e manutenção: `.ai/README.md`.
+- Modelos editáveis: `.ai/templates/`.
+- Avaliação das instruções: `.ai/evals/scenarios.md`.
+- Orientação para hooks futuros: `.ai/hooks/README.md`.
+- Verificação estrutural: `python3 .ai/scripts/validate.py`.
+
+Skills e perfis são lidos por estas instruções; não há registro nativo de skills ou subagentes no projeto.

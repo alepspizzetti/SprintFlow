@@ -1,67 +1,69 @@
 using SprintFlow.Timeline;
-using SprintFlow.Planning;
+using SprintFlow.Forecast;
 
 namespace SprintFlow.AzureDevOps;
 
-public sealed class AzureDevOpsSprintPlanningSource(AzureDevOpsCliClient client) : ISprintPlanningSource
+public sealed class AzureDevOpsSprintForecastSource(AzureDevOpsCliClient client) : ISprintForecastSource
 {
-    public async Task<IReadOnlyList<SprintSummary>> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<SprintSummary>> ListarAsync(CancellationToken cancellationToken = default)
     {
-        return (await client.GetIterationsAsync(cancellationToken))
+        return (await client.ObterIteracoesAsync(cancellationToken))
             .Where(item => item.Attributes?.StartDate is not null && item.Attributes.FinishDate is not null)
-            .Select(ToSummary)
+            .Select(ConverterParaResumo)
             .OrderBy(item => item.StartDate)
             .ToList();
     }
 
-    public async Task<SprintPlanningDataset?> GetAsync(string sprintId, CancellationToken cancellationToken = default)
+    public async Task<SprintForecastDataset?> ObterAsync(string sprintId, CancellationToken cancellationToken = default)
     {
-        var iterations = await client.GetIterationsAsync(cancellationToken);
+        var iterations = await client.ObterIteracoesAsync(cancellationToken);
         var iteration = iterations.FirstOrDefault(item => string.Equals(item.Id, sprintId, StringComparison.OrdinalIgnoreCase));
         if (iteration is null)
             throw new AzureDevOpsReadException($"A sprint solicitada não foi encontrada entre as {iterations.Count} iterações disponíveis para o time configurado.");
         if (iteration.Path is null || iteration.Attributes?.StartDate is null || iteration.Attributes.FinishDate is null)
             throw new AzureDevOpsReadException("A sprint solicitada não possui caminho ou datas válidos no Azure DevOps.");
 
-        var sprint = ToSummary(iteration);
-        var membersTask = client.GetTeamMembersAsync(cancellationToken);
-        var capacitiesTask = LoadCapacitiesAsync(iteration.Id, cancellationToken);
-        var itemsTask = client.GetWorkItemsAsync(iteration.Path, cancellationToken);
-        await Task.WhenAll(membersTask, capacitiesTask, itemsTask);
+        var sprint = ConverterParaResumo(iteration);
+        var membersTask = client.ObterMembrosDoTimeAsync(cancellationToken);
+        var capacitiesTask = CarregarCapacidadesAsync(iteration.Id, cancellationToken);
+        var teamDaysOffTask = client.ObterFolgasDoTimeAsync(iteration.Id, cancellationToken);
+        var itemsTask = client.ObterItensAsync(iteration.Path, cancellationToken);
+        await Task.WhenAll(membersTask, capacitiesTask, teamDaysOffTask, itemsTask);
 
         var capacities = capacitiesTask.Result.ToDictionary(item => item.TeamMember.Id, StringComparer.OrdinalIgnoreCase);
-        var members = membersTask.Result.Select(item => ToMember(item.Identity, capacities.GetValueOrDefault(item.Identity.Id))).ToList();
+        var members = membersTask.Result.Select(item => ConverterParaMembro(item.Identity, capacities.GetValueOrDefault(item.Identity.Id))).ToList();
         var items = itemsTask.Result;
-        var storyItems = items.Where(item => IsStory(item.Type)).ToDictionary(item => item.Id);
-        var taskItems = items.Where(item => IsTask(item.Type)).ToList();
+        var storyItems = items.Where(item => EhHistoria(item.Type)).ToDictionary(item => item.Id);
+        var taskItems = items.Where(item => EhTarefa(item.Type)).ToList();
         IReadOnlyDictionary<int, IReadOnlyList<TaskActivityPeriod>> activity = new Dictionary<int, IReadOnlyList<TaskActivityPeriod>>();
         if (sprint.Status == "Current")
         {
-            var revisions = await client.GetWorkItemRevisionsAsync(taskItems.Select(item => item.Id), cancellationToken);
-            activity = revisions.ToDictionary(item => item.Key, item => BuildActivityPeriods(item.Value));
+            var revisions = await client.ObterRevisoesDosItensAsync(taskItems.Select(item => item.Id), cancellationToken);
+            activity = revisions.ToDictionary(item => item.Key, item => MontarPeriodosDeAtividade(item.Value));
         }
         foreach (var missing in taskItems.Where(task => task.ParentId is not null && !storyItems.ContainsKey(task.ParentId.Value)).Select(task => task.ParentId!.Value).Distinct())
             storyItems[missing] = new AzureWorkItem(missing, null, "User Story", $"US #{missing}", "Unknown", null, 0, null);
 
         var stories = storyItems.Values.OrderBy(item => item.Order ?? decimal.MaxValue).ThenBy(item => item.Id)
-            .Select((item, index) => new PlanningStory(item.Id, item.Title, item.Order ?? index + 1)).ToList();
-        var tasks = taskItems.Where(item => item.ParentId is not null).Select(item => new PlanningTask(
-            item.Id, item.ParentId!.Value, item.Title, item.AssignedToId, Stage(item, members), item.RemainingWork,
-            NormalizeTaskState(item.State), item.Order)).ToList();
+            .Select((item, index) => new ForecastStory(item.Id, item.Title, item.Order ?? index + 1, NormalizarEstadoDaTarefa(item.State), item.Description)).ToList();
+        var tasks = taskItems.Where(item => item.ParentId is not null).Select(item => new ForecastTask(
+            item.Id, item.ParentId!.Value, item.Title, item.AssignedToId, ObterEtapa(item, members), item.RemainingWork,
+            NormalizarEstadoDaTarefa(item.State), item.Order)).ToList();
 
         var today = DateOnly.FromDateTime(DateTime.Today);
-        var planningDate = today < sprint.StartDate ? sprint.StartDate : today;
-        return new SprintPlanningDataset(sprint,
-            new PlanningInput(sprint.StartDate, sprint.EndDate, planningDate, members, stories, tasks),
-            items.ToDictionary(item => item.Id, item => client.WorkItemUrl(item.Id)), activity);
+        var forecastDate = today < sprint.StartDate ? sprint.StartDate : today;
+        return new SprintForecastDataset(sprint,
+            new ForecastInput(sprint.StartDate, sprint.EndDate, forecastDate, members, stories, tasks),
+            items.ToDictionary(item => item.Id, item => client.ObterUrlDoItem(item.Id)), activity,
+            TeamDaysOff: teamDaysOffTask.Result.SelectMany(EnumerarDatas).Distinct().OrderBy(date => date).ToList());
     }
 
-    public static IReadOnlyList<TaskActivityPeriod> BuildActivityPeriods(IReadOnlyList<AzureWorkItemRevision> revisions)
+    public static IReadOnlyList<TaskActivityPeriod> MontarPeriodosDeAtividade(IReadOnlyList<AzureWorkItemRevision> revisions)
     {
         var changes = new List<AzureWorkItemRevision>();
         foreach (var revision in revisions.OrderBy(item => item.ChangedAt))
         {
-            var normalized = revision with { State = NormalizeTaskState(revision.State) };
+            var normalized = revision with { State = NormalizarEstadoDaTarefa(revision.State) };
             if (changes.LastOrDefault() is { } previous &&
                 previous.State == normalized.State && previous.AssignedToId == normalized.AssignedToId)
                 continue;
@@ -87,7 +89,7 @@ public sealed class AzureDevOpsSprintPlanningSource(AzureDevOpsCliClient client)
         return periods;
     }
 
-    private static SprintSummary ToSummary(AzureIteration item)
+    private static SprintSummary ConverterParaResumo(AzureIteration item)
     {
         // Datas de iteração do Azure DevOps são datas de calendário serializadas em UTC.
         // Convertê-las para o fuso da máquina faz uma sprint que termina à meia-noite UTC
@@ -105,25 +107,25 @@ public sealed class AzureDevOpsSprintPlanningSource(AzureDevOpsCliClient client)
         return new(item.Id, item.Name, start, end, status);
     }
 
-    private async Task<IReadOnlyList<AzureCapacity>> LoadCapacitiesAsync(string iterationId, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<AzureCapacity>> CarregarCapacidadesAsync(string iterationId, CancellationToken cancellationToken)
     {
-        try { return await client.GetCapacitiesAsync(iterationId, cancellationToken); }
+        try { return await client.ObterCapacidadesAsync(iterationId, cancellationToken); }
         catch (AzureDevOpsReadException) { return []; }
     }
 
-    private static PlanningMember ToMember(AzureIdentity identity, AzureCapacity? capacity)
+    private static ForecastMember ConverterParaMembro(AzureIdentity identity, AzureCapacity? capacity)
     {
         var activity = capacity?.Activities.OrderByDescending(item => item.CapacityPerDay).FirstOrDefault();
-        var daysOff = capacity?.DaysOff.SelectMany(Range).ToHashSet() ?? [];
-        return new(identity.Id, identity.DisplayName, Role(activity?.Name) ?? SquadRole.PD, activity?.CapacityPerDay ?? 0, daysOff);
+        var daysOff = capacity?.DaysOff.SelectMany(EnumerarDatas).ToHashSet() ?? [];
+        return new(identity.Id, identity.DisplayName, ObterPapel(activity?.Name) ?? SquadRole.PD, activity?.CapacityPerDay ?? 0, daysOff);
     }
 
-    private static IEnumerable<DateOnly> Range(AzureDayOff range)
+    private static IEnumerable<DateOnly> EnumerarDatas(AzureDayOff range)
     {
-        for (var date = DateOnly.FromDateTime(range.Start.LocalDateTime); date <= DateOnly.FromDateTime(range.End.LocalDateTime); date = date.AddDays(1)) yield return date;
+        for (var date = DateOnly.FromDateTime(range.Start.DateTime); date <= DateOnly.FromDateTime(range.End.DateTime); date = date.AddDays(1)) yield return date;
     }
 
-    private static SquadRole? Role(string? value) => value?.ToLowerInvariant() switch
+    private static SquadRole? ObterPapel(string? value) => value?.ToLowerInvariant() switch
     {
         var name when name?.Contains("back") == true => SquadRole.Backend,
         var name when name?.Contains("front") == true => SquadRole.Frontend,
@@ -135,7 +137,7 @@ public sealed class AzureDevOpsSprintPlanningSource(AzureDevOpsCliClient client)
         _ => null
     };
 
-    private static WorkStage Stage(AzureWorkItem item, IReadOnlyList<PlanningMember> members)
+    private static WorkStage ObterEtapa(AzureWorkItem item, IReadOnlyList<ForecastMember> members)
     {
         var text = item.Title.ToLowerInvariant();
         // Marcadores explícitos na própria task são mais confiáveis que a função da
@@ -150,9 +152,9 @@ public sealed class AzureDevOpsSprintPlanningSource(AzureDevOpsCliClient client)
         return WorkStage.Other;
     }
 
-    private static bool IsStory(string type) => type.Equals("User Story", StringComparison.OrdinalIgnoreCase) || type.Equals("Product Backlog Item", StringComparison.OrdinalIgnoreCase);
-    private static bool IsTask(string type) => type.Equals("Task", StringComparison.OrdinalIgnoreCase) || type.Equals("Bug", StringComparison.OrdinalIgnoreCase);
-    private static string NormalizeTaskState(string state) => state.ToLowerInvariant() switch
+    private static bool EhHistoria(string type) => type.Equals("User Story", StringComparison.OrdinalIgnoreCase) || type.Equals("Product Backlog Item", StringComparison.OrdinalIgnoreCase);
+    private static bool EhTarefa(string type) => type.Equals("Task", StringComparison.OrdinalIgnoreCase) || type.Equals("Bug", StringComparison.OrdinalIgnoreCase);
+    private static string NormalizarEstadoDaTarefa(string state) => state.ToLowerInvariant() switch
     {
         "new" or "to do" or "todo" => "Todo",
         "active" or "in progress" or "doing" => "In Progress",
