@@ -16,6 +16,7 @@ builder.Services.AddSingleton(builder.Configuration.GetSection("AzureDevOps").Ge
 builder.Services.AddSingleton<AzureDevOpsCliClient>();
 builder.Services.AddSingleton<AzureDevOpsSprintForecastSource>();
 builder.Services.AddSingleton<ISprintForecastSource, MemorySprintForecastSource>();
+builder.Services.AddSingleton(builder.Configuration.GetSection("Forecast").Get<ForecastOptions>() ?? new ForecastOptions());
 builder.Services.AddSingleton<ForecastEngine>();
 builder.Services.AddSingleton<TimelineService>();
 

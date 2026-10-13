@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
 type Sprint = { id: string; name: string; startDate: string; endDate: string; status: string }
-type Segment = { date: string; hours: number }
+type Segment = { date: string; hours: number; start: string; end: string }
 type Activity = { memberId: string | null; memberName: string | null; kind: 'Assigned' | 'Active' | 'Paused' | 'Review' | 'Done'; startedAt: string; endedAt: string | null }
 type Blockage = { taskId: number; blockingTaskId: number | null; date: string; hours: number; cause: string }
 type Task = {
@@ -70,8 +70,8 @@ const calcularBarraDaTarefa = (task: Task, owner: Person, dates: string[], now: 
   const actualEnd = last ? last.kind === 'Done' ? calcularPosicao(last.startedAt, dates) : now : null
   const first = task.segments[0]
   const final = task.segments.at(-1)
-  const forecastStart = first ? Math.max(obterIndiceDoDia(first.date, dates), now) : null
-  const forecastEnd = final ? obterIndiceDoDia(final.date, dates) + Math.min(final.hours / (owner.dailyCapacityHours || final.hours), 1) : null
+  const forecastStart = first ? Math.max(calcularPosicao(first.start, dates), now) : null
+  const forecastEnd = final ? calcularPosicao(final.end, dates) : null
   const start = Math.min(actualStart ?? forecastStart ?? now, dates.length - minimum)
   const end = Math.min(Math.max(forecastEnd ?? actualEnd ?? start, start + minimum), dates.length)
   return {
