@@ -30,6 +30,6 @@ public sealed record TimelineTask(int Id, int StoryId, string StoryTitle, string
     IReadOnlyList<TaskActivityPeriod> Activity);
 public sealed record TaskActivityPeriod(string? MemberId, string? MemberName, string Kind,
     DateTimeOffset StartedAt, DateTimeOffset? EndedAt);
-public sealed record TimelineSegment(DateOnly Date, decimal Hours);
+public sealed record TimelineSegment(DateOnly Date, decimal Hours, DateTime Start, DateTime End);
 public sealed record TimelineBlockage(int TaskId, int? BlockingTaskId, DateOnly Date, decimal Hours, string Cause);
 public sealed record TimelineSummary(int CompletedStories, int TotalStories, DateOnly? ForecastEnd);

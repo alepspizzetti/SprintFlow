@@ -17,13 +17,18 @@ public sealed class TimelineService(ISprintForecastSource source, ForecastEngine
         var dataset = await source.ObterAsync(sprintId, cancellationToken);
         if (dataset is null) return null;
 
-        var today = DateOnly.FromDateTime(DateTime.Today);
+        var now = DateTime.Now;
+        var today = DateOnly.FromDateTime(now);
         var sprint = dataset.Sprint;
         var forecastDate = sprint.Status == "Current"
             ? today < sprint.StartDate ? sprint.StartDate : today > sprint.EndDate ? sprint.EndDate : today
             : sprint.StartDate;
         var input = dataset.Input with {
             ForecastDate = forecastDate,
+            Now = forecastDate == today ? now : null,
+            Tasks = dataset.Input.Tasks.Select(task => task with {
+                StartedAt = dataset.Activity?.GetValueOrDefault(task.Id)?.FirstOrDefault(period => period.Kind == "Active")?.StartedAt
+            }).ToList(),
             Members = dataset.Input.Members.Select(member => member with {
                 DaysOff = (member.DaysOff ?? []).Concat(dataset.TeamDaysOff ?? []).ToHashSet()
             }).ToList()
@@ -66,7 +71,7 @@ public sealed class TimelineService(ISprintForecastSource source, ForecastEngine
     private static TimelineTask MontarTarefaDaTimeline(ForecastTask task, string storyTitle,
         SprintForecastDataset dataset, TaskForecast? forecast = null) =>
         new(task.Id, task.StoryId, storyTitle, task.Title, task.Stage, task.State, task.RemainingWork, task.Order,
-            forecast?.Segments.Select(segment => new TimelineSegment(segment.Date, segment.Hours)).ToList() ?? [],
+            forecast?.Segments.Select(segment => new TimelineSegment(segment.Date, segment.Hours, segment.Start, segment.End)).ToList() ?? [],
             forecast?.ExceedsSprint ?? false, dataset.WorkItemUrls?.GetValueOrDefault(task.Id),
             dataset.Activity?.GetValueOrDefault(task.Id) ?? []);
 

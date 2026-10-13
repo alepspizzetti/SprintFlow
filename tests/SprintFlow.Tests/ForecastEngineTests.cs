@@ -103,6 +103,61 @@ public sealed class ForecastEngineTests
         Assert.Equal(Monday.AddDays(1), result.Tasks.Single(task => task.Id == 1).StartDate);
     }
 
+    [Fact]
+    public void Enfileira_tarefas_da_mesma_pessoa_sem_sobreposicao()
+    {
+        var result = CalcularPrevisao([CriarMembro("back", SquadRole.Backend, 8)],
+            [CriarTarefa(1, "back", WorkStage.Backend, 2), CriarTarefa(2, "back", WorkStage.Backend, 2)]);
+
+        var first = Assert.Single(result.Tasks.Single(task => task.Id == 1).Segments);
+        var second = Assert.Single(result.Tasks.Single(task => task.Id == 2).Segments);
+        Assert.Equal(Hora(8), first.Start);
+        Assert.Equal(Hora(10, 30), first.End);
+        Assert.Equal(first.End, second.Start);
+    }
+
+    [Fact]
+    public void Tarefa_a_fazer_inicia_no_maior_entre_cadastro_agora_e_fim_da_anterior()
+    {
+        var input = CriarEntrada(Monday, [CriarMembro("back", SquadRole.Backend, 8)],
+            [CriarTarefa(1, "back", WorkStage.Backend, 2) with { CreatedAt = new DateTimeOffset(Hora(9)) },
+             CriarTarefa(2, "back", WorkStage.Backend, 2) with { CreatedAt = new DateTimeOffset(Hora(16)) }]) with { Now = Hora(13) };
+
+        var result = new ForecastEngine().CalcularPrevisao(input);
+
+        Assert.Equal(Hora(13), result.Tasks.Single(task => task.Id == 1).Segments[0].Start);
+        Assert.Equal(Hora(16), result.Tasks.Single(task => task.Id == 2).Segments[0].Start);
+    }
+
+    [Fact]
+    public void Tarefa_em_andamento_ocupa_a_pessoa_antes_da_fila_independente_da_ordem()
+    {
+        var input = CriarEntrada(Monday, [CriarMembro("back", SquadRole.Backend, 8)],
+            [new ForecastTask(1, 100, "Primeira", "back", WorkStage.Backend, 2, "Todo", 1),
+             new ForecastTask(2, 100, "Segunda", "back", WorkStage.Backend, 2, "In Progress", 2, StartedAt: new DateTimeOffset(Hora(9)))]) with { Now = Hora(10) };
+
+        var result = new ForecastEngine().CalcularPrevisao(input);
+
+        var active = Assert.Single(result.Tasks.Single(task => task.Id == 2).Segments);
+        Assert.Equal(Hora(10), active.Start);
+        Assert.Equal(active.End, result.Tasks.Single(task => task.Id == 1).Segments[0].Start);
+    }
+
+    [Fact]
+    public void Tarefas_em_andamento_da_mesma_pessoa_ficam_sobrepostas()
+    {
+        var startedAt = new DateTimeOffset(Hora(9));
+        var input = CriarEntrada(Monday, [CriarMembro("back", SquadRole.Backend, 8)],
+            [new ForecastTask(1, 100, "A", "back", WorkStage.Backend, 2, "In Progress", 1, StartedAt: startedAt),
+             new ForecastTask(2, 100, "B", "back", WorkStage.Backend, 2, "In Progress", 2, StartedAt: startedAt)]) with { Now = Hora(10) };
+
+        var result = new ForecastEngine().CalcularPrevisao(input);
+
+        Assert.All(result.Tasks, task => Assert.Equal(Hora(10), task.Segments[0].Start));
+    }
+
+    private static DateTime Hora(int hour, int minute = 0) => Monday.ToDateTime(new TimeOnly(hour, minute));
+
     private static ForecastResult CalcularPrevisao(IReadOnlyList<ForecastMember> members, IReadOnlyList<ForecastTask> tasks) =>
         new ForecastEngine().CalcularPrevisao(CriarEntrada(Monday, members, tasks));
 

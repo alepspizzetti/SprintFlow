@@ -22,7 +22,9 @@ public sealed record ForecastTask(
     WorkStage Stage,
     decimal RemainingWork,
     string State,
-    decimal? Order = null);
+    decimal? Order = null,
+    DateTimeOffset? CreatedAt = null,
+    DateTimeOffset? StartedAt = null);
 
 public sealed record ForecastInput(
     DateOnly SprintStart,
@@ -30,9 +32,16 @@ public sealed record ForecastInput(
     [property: JsonPropertyName("planningDate")] DateOnly ForecastDate,
     IReadOnlyList<ForecastMember> Members,
     IReadOnlyList<ForecastStory> Stories,
-    IReadOnlyList<ForecastTask> Tasks);
+    IReadOnlyList<ForecastTask> Tasks,
+    DateTime? Now = null);
 
-public sealed record AllocationSegment(DateOnly Date, decimal Hours);
+public sealed record AllocationSegment(DateOnly Date, decimal Hours, DateTime Start, DateTime End);
+
+public sealed class ForecastOptions
+{
+    public TimeOnly WorkdayStart { get; init; } = new(8, 0);
+    public TimeOnly WorkdayEnd { get; init; } = new(18, 0);
+}
 
 public sealed record TaskForecast(
     int Id,

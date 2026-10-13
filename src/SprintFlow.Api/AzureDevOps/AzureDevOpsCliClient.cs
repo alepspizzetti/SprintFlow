@@ -34,7 +34,7 @@ public sealed class AzureDevOpsCliClient(AzureDevOpsOptions options)
     public async Task<IReadOnlyList<AzureWorkItem>> ObterItensAsync(string iterationPath, CancellationToken ct = default)
     {
         var safePath = iterationPath.Replace("'", "''", StringComparison.Ordinal);
-        var wiql = $"SELECT [System.Id], [System.Parent], [System.WorkItemType], [System.Title], [System.Description], [System.State], [System.AssignedTo], [Microsoft.VSTS.Scheduling.RemainingWork], [Microsoft.VSTS.Scheduling.OriginalEstimate], [Microsoft.VSTS.Common.StackRank], [Microsoft.VSTS.Common.BacklogPriority] FROM WorkItems WHERE [System.IterationPath] = '{safePath}' ORDER BY [Microsoft.VSTS.Common.StackRank]";
+        var wiql = $"SELECT [System.Id], [System.Parent], [System.WorkItemType], [System.Title], [System.Description], [System.State], [System.AssignedTo], [System.CreatedDate], [Microsoft.VSTS.Scheduling.RemainingWork], [Microsoft.VSTS.Scheduling.OriginalEstimate], [Microsoft.VSTS.Common.StackRank], [Microsoft.VSTS.Common.BacklogPriority] FROM WorkItems WHERE [System.IterationPath] = '{safePath}' ORDER BY [Microsoft.VSTS.Common.StackRank]";
         return AzureDevOpsJsonParser.LerItens(await ExecutarAsync(["boards", "query", "--organization", ObterUrlDaOrganizacao(), "--wiql", wiql, "--output", "json"], ct));
     }
 
@@ -118,7 +118,8 @@ public static class AzureDevOpsJsonParser
         decimal? Numero(string name) => fields.TryGetProperty(name, out var value) && value.TryGetDecimal(out var result) ? result : null;
         int? Inteiro(string name) => fields.TryGetProperty(name, out var value) && value.TryGetInt32(out var result) ? result : null;
         string? Identidade(string name) => fields.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object && value.TryGetProperty("id", out var id) ? id.GetString() : null;
-        return new(Inteiro("System.Id") ?? 0, Inteiro("System.Parent"), Texto("System.WorkItemType") ?? "Unknown", Texto("System.Title") ?? "", Texto("System.State") ?? "Unknown", Identidade("System.AssignedTo"), Numero("Microsoft.VSTS.Scheduling.RemainingWork") ?? Numero("Microsoft.VSTS.Scheduling.OriginalEstimate") ?? 0, Numero("Microsoft.VSTS.Common.StackRank") ?? Numero("Microsoft.VSTS.Common.BacklogPriority"), Texto("System.Description"));
+        return new(Inteiro("System.Id") ?? 0, Inteiro("System.Parent"), Texto("System.WorkItemType") ?? "Unknown", Texto("System.Title") ?? "", Texto("System.State") ?? "Unknown", Identidade("System.AssignedTo"), Numero("Microsoft.VSTS.Scheduling.RemainingWork") ?? Numero("Microsoft.VSTS.Scheduling.OriginalEstimate") ?? 0, Numero("Microsoft.VSTS.Common.StackRank") ?? Numero("Microsoft.VSTS.Common.BacklogPriority"), Texto("System.Description"),
+            DateTimeOffset.TryParse(Texto("System.CreatedDate"), out var createdAt) ? createdAt : null);
     }
 
     public static IReadOnlyList<AzureWorkItemRevision> LerRevisoes(string json)

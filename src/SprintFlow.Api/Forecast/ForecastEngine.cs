@@ -1,20 +1,23 @@
 namespace SprintFlow.Forecast;
 
-public sealed class ForecastEngine
+public sealed class ForecastEngine(ForecastOptions? options = null)
 {
+    private readonly ForecastOptions workday = ValidarExpediente(options ?? new ForecastOptions());
+
     public ForecastResult CalcularPrevisao(ForecastInput input)
     {
         var members = input.Members.ToDictionary(member => member.Id);
         var storyOrder = input.Stories.ToDictionary(story => story.Id, story => story.Order);
-        var cursors = input.Members.ToDictionary(
+        var cursors = input.Members.Where(member => member.DailyCapacityHours > 0).ToDictionary(
             member => member.Id,
-            member => new MemberCursor(input.ForecastDate, member.DailyCapacityHours));
+            member => CriarCursor(input, member));
         var forecasts = new Dictionary<int, TaskForecast>();
         var blockages = new List<FlowBlockage>();
         var ignored = new List<int>();
 
         var tasks = input.Tasks
-            .OrderBy(task => ObterOrdemDaEtapa(task.Stage))
+            .OrderBy(task => EstaEmAndamento(task) ? 0 : 1)
+            .ThenBy(task => ObterOrdemDaEtapa(task.Stage))
             .ThenBy(task => storyOrder.GetValueOrDefault(task.StoryId, decimal.MaxValue))
             .ThenBy(task => task.Order ?? decimal.MaxValue)
             .ThenBy(task => task.Id)
@@ -39,27 +42,33 @@ public sealed class ForecastEngine
 
             var segments = new List<AllocationSegment>();
             var related = input.Tasks.Where(item => item.StoryId == task.StoryId).ToList();
-            if (task.Stage == WorkStage.Frontend)
+            if (EstaEmAndamento(task))
             {
+                var progress = CriarCursor(input, member);
+                segments.AddRange(Alocar(progress, member, task.RemainingWork, DateTime.MinValue));
+                MoverPara(cursor, ObterInstante(progress));
+            }
+            else if (task.Stage == WorkStage.Frontend)
+            {
+                MoverPara(cursor, task.CreatedAt?.LocalDateTime ?? DateTime.MinValue);
                 var backend = related.Where(item => item.Stage == WorkStage.Backend && !EstaConcluida(item)).ToList();
-                var backendEnd = backend.Count == 0 ? (Date: cursor.Date, TaskId: (int?)null) : ObterUltimoTermino(backend, forecasts);
-                var backendAvailable = backend.Count == 0 ? cursor.Date : backendEnd.Date.AddDays(1);
-                AdicionarBloqueios(blockages, cursor, member, task, backendAvailable, backendEnd.TaskId,
+                var backendEnd = ObterUltimoTermino(backend, forecasts);
+                AdicionarBloqueios(blockages, cursor, member, task, backendEnd.End, backendEnd.TaskId,
                     "Frontend aguardando conclusão do Backend.");
-                segments.AddRange(Alocar(cursor, member, task.RemainingWork, backendAvailable));
+                segments.AddRange(Alocar(cursor, member, task.RemainingWork, backendEnd.End));
             }
             else if (task.Stage == WorkStage.QA)
             {
+                MoverPara(cursor, task.CreatedAt?.LocalDateTime ?? DateTime.MinValue);
                 var development = related.Where(item => item.Stage is WorkStage.Backend or WorkStage.Frontend && !EstaConcluida(item)).ToList();
-                var developmentEnd = development.Count == 0 ? (Date: cursor.Date, TaskId: (int?)null) : ObterUltimoTermino(development, forecasts);
-                var qaAvailable = development.Count == 0 ? cursor.Date : developmentEnd.Date.AddDays(1);
-                AdicionarBloqueios(blockages, cursor, member, task, qaAvailable, developmentEnd.TaskId,
+                var developmentEnd = ObterUltimoTermino(development, forecasts);
+                AdicionarBloqueios(blockages, cursor, member, task, developmentEnd.End, developmentEnd.TaskId,
                     "QA aguardando todas as tasks de Backend e Frontend da User Story.");
-                segments.AddRange(Alocar(cursor, member, task.RemainingWork, qaAvailable));
+                segments.AddRange(Alocar(cursor, member, task.RemainingWork, developmentEnd.End));
             }
             else
             {
-                segments.AddRange(Alocar(cursor, member, task.RemainingWork, cursor.Date));
+                segments.AddRange(Alocar(cursor, member, task.RemainingWork, task.CreatedAt?.LocalDateTime ?? DateTime.MinValue));
             }
 
             DateOnly? start = segments.Count == 0 ? null : segments.Min(segment => segment.Date);
@@ -74,25 +83,24 @@ public sealed class ForecastEngine
             ignored);
     }
 
-    private static IReadOnlyList<AllocationSegment> Alocar(
+    private IReadOnlyList<AllocationSegment> Alocar(
         MemberCursor cursor,
         ForecastMember member,
         decimal requestedHours,
-        DateOnly notBefore)
+        DateTime notBefore)
     {
         var segments = new List<AllocationSegment>();
         var remaining = requestedHours;
-        if (cursor.Date < notBefore)
-        {
-            cursor.Date = notBefore;
-            cursor.RemainingHours = cursor.DailyCapacity;
-        }
+        MoverPara(cursor, notBefore);
 
         while (remaining > 0)
         {
             AvancarParaDiaUtil(cursor, member);
             var hours = Math.Min(remaining, cursor.RemainingHours);
-            segments.Add(new AllocationSegment(cursor.Date, hours));
+            var used = cursor.DailyCapacity - cursor.RemainingHours;
+            segments.Add(new AllocationSegment(cursor.Date, hours,
+                ObterInstante(cursor.Date, used, cursor.DailyCapacity),
+                ObterInstante(cursor.Date, used + hours, cursor.DailyCapacity)));
             remaining -= hours;
             cursor.RemainingHours -= hours;
             if (cursor.RemainingHours == 0)
@@ -105,38 +113,71 @@ public sealed class ForecastEngine
         return segments;
     }
 
-    private static void AdicionarBloqueios(
+    private void AdicionarBloqueios(
         ICollection<FlowBlockage> output,
         MemberCursor cursor,
         ForecastMember member,
         ForecastTask affectedTask,
-        DateOnly dependencyEnd,
+        DateTime dependencyEnd,
         int? blockingTaskId,
         string cause)
     {
+        var limit = new MemberCursor(cursor.Date, cursor.DailyCapacity) { RemainingHours = cursor.RemainingHours };
+        MoverPara(limit, dependencyEnd);
         var date = cursor.Date;
         var available = cursor.RemainingHours;
-        while (date < dependencyEnd)
+        while (date <= limit.Date)
         {
-            if (EhDiaUtil(date, member) && available > 0)
-                output.Add(new FlowBlockage(member.Id, affectedTask.Id, blockingTaskId, date, available, cause));
+            var blocked = available - (date == limit.Date ? limit.RemainingHours : 0);
+            if (EhDiaUtil(date, member) && blocked > 0)
+                output.Add(new FlowBlockage(member.Id, affectedTask.Id, blockingTaskId, date, blocked, cause));
             date = date.AddDays(1);
             available = member.DailyCapacityHours;
         }
     }
 
-    private static (DateOnly Date, int? TaskId) ObterUltimoTermino(
+    private static (DateTime End, int? TaskId) ObterUltimoTermino(
         IReadOnlyList<ForecastTask> dependencies,
-        IReadOnlyDictionary<int, TaskForecast> forecasts)
-    {
-        var latest = dependencies
-            .Select(task => forecasts.TryGetValue(task.Id, out var forecast) && forecast.EndDate is not null
-                ? (Date: forecast.EndDate.Value, TaskId: (int?)task.Id)
-                : (Date: DateOnly.MinValue, TaskId: (int?)null))
-            .OrderByDescending(item => item.Date)
+        IReadOnlyDictionary<int, TaskForecast> forecasts) =>
+        dependencies
+            .Select(task => forecasts.TryGetValue(task.Id, out var forecast) && forecast.Segments.Count > 0
+                ? (End: forecast.Segments[^1].End, TaskId: (int?)task.Id)
+                : (End: DateTime.MinValue, TaskId: (int?)null))
+            .OrderByDescending(item => item.End)
             .FirstOrDefault();
-        return latest.Date == DateOnly.MinValue ? (DateOnly.MinValue, null) : latest;
+
+    private MemberCursor CriarCursor(ForecastInput input, ForecastMember member)
+    {
+        var cursor = new MemberCursor(input.ForecastDate, member.DailyCapacityHours);
+        MoverPara(cursor, input.Now ?? DateTime.MinValue);
+        return cursor;
     }
+
+    private void MoverPara(MemberCursor cursor, DateTime instant)
+    {
+        if (instant <= ObterInstante(cursor)) return;
+        var time = TimeOnly.FromDateTime(instant);
+        var elapsed = time <= workday.WorkdayStart ? 0m
+            : time >= workday.WorkdayEnd ? ObterDuracaoDoExpediente()
+            : (decimal)(time - workday.WorkdayStart).TotalHours;
+        cursor.Date = DateOnly.FromDateTime(instant);
+        cursor.RemainingHours = Math.Round(cursor.DailyCapacity * (1 - elapsed / ObterDuracaoDoExpediente()), 4);
+        if (cursor.RemainingHours > 0) return;
+        cursor.Date = cursor.Date.AddDays(1);
+        cursor.RemainingHours = cursor.DailyCapacity;
+    }
+
+    private DateTime ObterInstante(MemberCursor cursor) =>
+        ObterInstante(cursor.Date, cursor.DailyCapacity - cursor.RemainingHours, cursor.DailyCapacity);
+
+    private DateTime ObterInstante(DateOnly date, decimal usedHours, decimal capacity) =>
+        date.ToDateTime(workday.WorkdayStart).AddMinutes((double)Math.Round(usedHours / capacity * ObterDuracaoDoExpediente() * 60));
+
+    private static ForecastOptions ValidarExpediente(ForecastOptions value) => value.WorkdayEnd > value.WorkdayStart
+        ? value
+        : throw new ArgumentException("O fim do expediente deve ser posterior ao início.", nameof(value));
+
+    private decimal ObterDuracaoDoExpediente() => (decimal)(workday.WorkdayEnd - workday.WorkdayStart).TotalHours;
 
     private static void AvancarParaDiaUtil(MemberCursor cursor, ForecastMember member)
     {
@@ -150,6 +191,9 @@ public sealed class ForecastEngine
     private static bool EhDiaUtil(DateOnly date, ForecastMember member) =>
         date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday &&
         !(member.DaysOff?.Contains(date) ?? false);
+
+    private static bool EstaEmAndamento(ForecastTask task) =>
+        task.StartedAt is not null && string.Equals(task.State, "In Progress", StringComparison.OrdinalIgnoreCase);
 
     private static bool EstaConcluida(ForecastTask task) =>
         string.Equals(task.State, "Done", StringComparison.OrdinalIgnoreCase);

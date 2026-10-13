@@ -48,7 +48,7 @@ public sealed class AzureDevOpsSprintForecastSource(AzureDevOpsCliClient client)
             .Select((item, index) => new ForecastStory(item.Id, item.Title, item.Order ?? index + 1, NormalizarEstadoDaTarefa(item.State), item.Description)).ToList();
         var tasks = taskItems.Where(item => item.ParentId is not null).Select(item => new ForecastTask(
             item.Id, item.ParentId!.Value, item.Title, item.AssignedToId, ObterEtapa(item, members), item.RemainingWork,
-            NormalizarEstadoDaTarefa(item.State), item.Order)).ToList();
+            NormalizarEstadoDaTarefa(item.State), item.Order, item.CreatedAt)).ToList();
 
         var today = DateOnly.FromDateTime(DateTime.Today);
         var forecastDate = today < sprint.StartDate ? sprint.StartDate : today;

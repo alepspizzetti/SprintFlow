@@ -221,13 +221,14 @@ flowchart TD
 | Papel da pessoa | Atividade de maior capacidade diária: contém `back` → Backend; `front` → Frontend; `qa`/`test` → QA; `pd`, `el`, `gpm`, `pm` exatos; senão PD. |
 | Estágio da task | Título contém `front` ou ` ui` → Frontend; `qa`/`test` → QA; `back`/`api` → Backend; senão o papel do responsável; senão Other. |
 | Ordem da previsão | Estágio (Backend, Frontend, QA, Other), depois ordem da US, ordem da task e id. |
-| Dependências | Frontend começa no dia seguinte ao fim do último Backend aberto da mesma US. QA espera Backend e Frontend da US. Dias de espera viram `FlowBlockage`. |
-| Alocação | Horas por dia até a capacidade da pessoa; pula sábado, domingo, folgas individuais e folgas do time inteiro. Task com fim após o fim da sprint recebe `ExceedsSprint`. |
+| Dependências | Frontend começa no horário em que termina o último Backend aberto da mesma US. QA espera Backend e Frontend da US. Horas de espera por dia viram `FlowBlockage`. |
+| Fila por pessoa | Uma task por vez. Task `In Progress` com início no histórico começa no primeiro `Active`, termina em agora + esforço restante e entra antes da fila, independentemente da ordem; várias em andamento da mesma pessoa ficam sobrepostas. Demais tasks seguem a ordem e começam no maior entre `System.CreatedDate`, agora e o fim da anterior. Sem histórico, `In Progress` segue a fila. |
+| Alocação | Horas por dia até a capacidade da pessoa, distribuídas no expediente `Forecast:WorkdayStart`–`Forecast:WorkdayEnd` (padrão 08:00–18:00); cada segmento expõe `Start` e `End`; pula sábado, domingo, folgas individuais e folgas do time inteiro. Task com fim após o fim da sprint recebe `ExceedsSprint`. |
 | Sem previsão | Task sem responsável da squad, sem esforço restante ou com capacidade 0 vai para `IgnoredTaskIds`. |
 | Atividade | Só na sprint atual. Revisões em sequência com mesmo estado e responsável são unidas. `In Progress` → Active; `Review` → Review; `Done` → Done; outro estado → Assigned antes do início, Paused depois. |
 | Dia de referência | Sprint atual: hoje, limitado ao intervalo da sprint. Outras sprints: data de início. |
 | USs concluídas (métrica) | Estado da própria US no Azure igual a `Done`, independentemente do estado ou da existência de tasks. API fornece `EstaConcluida` para o contador e recolhimento na tela. |
-| Barras | Coluna do dia = 24h; posição `(hora + minuto/60) / 24`. Início no primeiro `Active`; sem esse registro, usa o primeiro `Review` ou `Done`. Sem início registrado, usa a previsão ou agora. Criação e atribuição ficam somente no histórico. Fim no `Done` ou agora, estendido até o último segmento previsto. |
+| Barras | Coluna do dia = 24h; posição `(hora + minuto/60) / 24`. Início no primeiro `Active`; sem esse registro, usa o primeiro `Review` ou `Done`. Sem início registrado, usa o `Start` do primeiro segmento ou agora. Criação e atribuição ficam somente no histórico. Fim no `Done` ou agora, estendido até o `End` do último segmento previsto. |
 
 Mensagem de erro que chega ao usuário, com dado fictício:
 
