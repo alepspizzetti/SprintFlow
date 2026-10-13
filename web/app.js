@@ -81,6 +81,7 @@ const coresDoStatus = {
   'await release': '#7b2d63',
   'awaiting release': '#7b2d63',
   testing: '#d8b64c',
+  'in progress': '#1f6391',
   todo: '#596475',
   'to do': '#596475'
 }
