@@ -18,7 +18,7 @@ Antes de qualquer tarefa, leia `.ai/rules/general.md`, `.ai/rules/code-style.md`
 | Implementação ou correção | `.ai/workflows/implement.md`; para bugs, também `.ai/workflows/fix-bug.md` |
 | Revisão de código | `.ai/workflows/review.md` |
 | Lentidão ou otimização | `.ai/workflows/performance.md` |
-| Validação, build ou reinício | `.ai/workflows/validate.md` |
+| Validação, execução ou reinício | `.ai/workflows/validate.md` |
 | Organização das instruções de IA | `.ai/README.md` |
 
 ## Skills e perfis compartilhados
@@ -27,7 +27,7 @@ Leia o `SKILL.md` correspondente quando o pedido se enquadrar na descrição:
 
 | Pedido | Documento |
 | --- | --- |
-| Verificar alterações, build ou execução | `.ai/skills/sprintflow-validate/SKILL.md` |
+| Verificar alterações ou execução | `.ai/skills/sprintflow-validate/SKILL.md` |
 | Revisar diff, branch ou arquivos | `.ai/skills/sprintflow-review/SKILL.md` |
 | Atualizar documentação de estrutura, fluxo ou domínio | `.ai/skills/sprintflow-docs/SKILL.md` |
 

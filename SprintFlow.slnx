@@ -1,8 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/SprintFlow.Api/SprintFlow.Api.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/SprintFlow.Tests/SprintFlow.Tests.csproj" />
-  </Folder>
-</Solution>

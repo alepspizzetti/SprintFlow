@@ -27,8 +27,8 @@ Obrigado por ajudar a melhorar o SprintFlow. Este guia mostra como preparar o am
 ## Validação local
 
 ```bash
-dotnet test tests/SprintFlow.Tests
-cd src/SprintFlow.Web && npm run build
+python3 -m unittest discover -s tests
+node --check web/app.js
 ./stop.sh && ./run.sh
 ```
 
@@ -36,7 +36,7 @@ Abra http://127.0.0.1:5002 e confira a sprint atual. Para mudanças de tela, tes
 
 ## Regras do projeto
 
-- **Azure DevOps é somente leitura.** Nunca adicione comando ou chamada que escreva no Azure. Toda leitura passa pelo `AzureDevOpsCliClient`, via `az` CLI.
+- **Azure DevOps é somente leitura.** Nunca adicione comando ou chamada que escreva no Azure. Toda leitura passa pelo `AzureDevOpsCliClient` (`sprintflow/azure_cli.py`), via `az` CLI.
 - **Ordem do backlog.** A tela deve respeitar a ordem do Azure (`StackRank`). Não reordene USs nem tasks por outro critério.
 - **Sem comentários no código.** Se algo precisar de explicação, registre em `AGENTS.md` ou `.docs/ARQUITETURA.md`.
 - **Textos em português**, tanto na interface quanto nas mensagens de erro.
@@ -45,7 +45,7 @@ Abra http://127.0.0.1:5002 e confira a sprint atual. Para mudanças de tela, tes
 
 ## Segurança e dados
 
-- Não versione `src/SprintFlow.Api/appsettings.Local.json`, `.run/` nem arquivos de cache.
+- Não versione `appsettings.Local.json`, `.run/` nem arquivos de cache.
 - Não inclua tokens, PATs, nomes de organização, títulos de work items ou nomes de pessoas em código, testes, screenshots públicos ou issues. Use dados fictícios.
 - A autenticação é sempre a sessão do `az login`; o projeto não deve ler nem guardar credenciais.
 
@@ -55,7 +55,7 @@ A `master` só recebe mudanças por pull request. As regras ficam no ruleset `.g
 
 - push direto, force-push e exclusão da branch são bloqueados;
 - o PR precisa de 1 aprovação do code owner (`.github/CODEOWNERS`); aprovações antigas caem a cada novo push;
-- os checks **API** (`dotnet build` + `dotnet test`) e **Web** (`npm ci` + `npm run build`) do workflow `.github/workflows/ci.yml` precisam passar, com a branch atualizada em relação à `master`;
+- os checks **API** (`python -m unittest discover -s tests` no Python 3.11) e **Web** (`node --check web/app.js`) do workflow `.github/workflows/ci.yml` precisam passar, com a branch atualizada em relação à `master`;
 - administradores do repositório podem fazer merge do próprio PR sem a aprovação, mas ainda via PR.
 
 Para aplicar ou reaplicar o ruleset (requer permissão de administrador):
@@ -66,7 +66,7 @@ gh api repos/alepspizzetti/SprintFlow/rulesets --method POST --input .github/rul
 
 ## Checklist do pull request
 
-- [ ] `dotnet test` e `npm run build` passam.
+- [ ] `python3 -m unittest discover -s tests` e `node --check web/app.js` passam.
 - [ ] A tela foi conferida no navegador.
 - [ ] Nenhuma escrita no Azure DevOps foi adicionada.
 - [ ] Documentação atualizada, se a estrutura mudou.

@@ -5,18 +5,16 @@ Gantt local para a daily de uma squad. Mostra as USs e tasks da sprint na ordem 
 ## Estrutura
 
 ```text
-src/
-  SprintFlow.Api/      backend ASP.NET Core: API, cache, leitura do Azure e previsão
-    Forecast/         motor e modelos da previsão de execução
-  SprintFlow.Web/      frontend React + Vite, servido pelo backend
-tests/
-  SprintFlow.Tests/    testes xUnit
+sprintflow/           backend Python (stdlib): API, cache, leitura do Azure e previsão
+web/                  frontend HTML/CSS/JS sem build, servido pelo backend
+tests/                testes unittest
+appsettings.json      configuração versionada (hosts, Azure DevOps, expediente)
 .docs/
   ARQUITETURA.md       arquitetura, fluxos, regras e limites
 .ai/                  regras, workflows, skills, perfis e modelos compartilhados de IA
 AGENTS.md             ponto de entrada das instruções compartilhadas
 .github/
-  workflows/ci.yml     CI: build e testes da API e build do Web
+  workflows/ci.yml     CI: testes da API e checagem de sintaxe do Web
   rulesets/master.json proteção da branch master
   CODEOWNERS           aprovador obrigatório dos PRs
 run.sh / stop.sh       sobe e encerra o aplicativo
@@ -44,9 +42,8 @@ Abra uma nova sessão para conferir a leitura do `AGENTS.md` e dos arquivos pert
 
 | Dependência | Versão | Uso |
 | --- | --- | --- |
-| .NET SDK | 10 | Build do backend e testes |
-| ASP.NET Core Runtime | 10 | Execução do backend |
-| Node.js + npm | Node 20+ | Build do frontend (React + Vite) |
+| Python | 3.11+ | Backend e testes (somente biblioteca padrão) |
+| Node.js | opcional | Checagem de sintaxe do `web/app.js` (`node --check`) |
 | Azure CLI | 2.x | Leitura do Azure DevOps |
 | Extensão `azure-devops` do Azure CLI | 1.x | Comandos `az boards` |
 | Chromium/Chrome/Firefox | atual | Abrir a tela |
@@ -54,33 +51,30 @@ Abra uma nova sessão para conferir a leitura do `AGENTS.md` e dos arquivos pert
 ### Instalação no CachyOS/Arch
 
 ```bash
-sudo pacman -S dotnet-sdk-10.0 aspnet-runtime-10.0 nodejs npm azure-cli
+sudo pacman -S python azure-cli
 az extension add --name azure-devops
 az login
 ```
 
-Em outras distribuições, instale o .NET 10 SDK e o ASP.NET Core Runtime 10 pelo [site da Microsoft](https://dotnet.microsoft.com/download/dotnet/10.0) e o Azure CLI pela [documentação oficial](https://learn.microsoft.com/cli/azure/install-azure-cli).
+Em outras distribuições, instale o Python 3.11+ pelo gerenciador de pacotes e o Azure CLI pela [documentação oficial](https://learn.microsoft.com/cli/azure/install-azure-cli).
 
 Confira a instalação:
 
 ```bash
-dotnet --list-sdks                         # deve listar 10.x
-dotnet --list-runtimes | grep AspNetCore   # deve listar Microsoft.AspNetCore.App 10.x
+python3 --version   # deve listar 3.11 ou superior
 az extension show --name azure-devops
 az account show
 ```
 
-No CachyOS/Arch, o `run.sh` instala o ASP.NET Core Runtime 10 com `sudo pacman -S --needed aspnet-runtime-10.0` se estiver ausente no `dotnet` padrão. O terminal pode solicitar sua senha e a confirmação da instalação. O script verifica novamente o runtime antes de continuar o build.
-
-Se o ASP.NET Core 10 estiver instalado fora do `dotnet` padrão, informe o executável em `SPRINTFLOW_DOTNET_RUNTIME` (nesse caso, não há instalação automática):
+O `run.sh` usa o `python3` do `PATH` e encerra com mensagem se a versão for anterior à 3.11. Para outro interpretador, informe o executável em `SPRINTFLOW_PYTHON`:
 
 ```bash
-SPRINTFLOW_DOTNET_RUNTIME=/caminho/para/dotnet ./run.sh
+SPRINTFLOW_PYTHON=/caminho/para/python3.12 ./run.sh
 ```
 
 ## Configurar
 
-Copie `src/SprintFlow.Api/appsettings.Local.example.json` para `src/SprintFlow.Api/appsettings.Local.json` e ajuste organização, projeto e time. `Organization` aceita o nome (`minha-organizacao`) ou a URL (`https://dev.azure.com/minha-organizacao`). O nome do time (`Team`) também aparece no topo da tela. O arquivo local não é versionado. Reinicie o aplicativo depois de mudar esses valores.
+Na raiz do repositório, copie `appsettings.Local.example.json` para `appsettings.Local.json` e ajuste organização, projeto e time. `Organization` aceita o nome (`minha-organizacao`) ou a URL (`https://dev.azure.com/minha-organizacao`). O nome do time (`Team`) também aparece no topo da tela. O arquivo local não é versionado. Reinicie o aplicativo depois de mudar esses valores.
 
 ## Executar
 
@@ -88,7 +82,7 @@ Copie `src/SprintFlow.Api/appsettings.Local.example.json` para `src/SprintFlow.A
 ./run.sh
 ```
 
-Abra http://127.0.0.1:5002. Use `./stop.sh` para encerrar. O `run.sh` instala as dependências do frontend na primeira execução (`npm ci`), gera o build do frontend, compila o backend e o inicia em segundo plano. O log fica em `.run/backend.log`.
+Abra http://127.0.0.1:5002. Use `./stop.sh` para encerrar. O `run.sh` verifica o Python e inicia `python3 -m sprintflow` em segundo plano, sem build nem instalação de pacotes. O log fica em `.run/backend.log` e o PID em `.run/backend.pid`.
 
 ## Uso
 
@@ -103,8 +97,8 @@ Uma pausa só aparece quando houve mudança de estado no Azure DevOps; períodos
 ## Desenvolvimento
 
 ```bash
-dotnet test tests/SprintFlow.Tests
-cd src/SprintFlow.Web && npm install && npm run dev
+python3 -m unittest discover -s tests
+python3 -m sprintflow
 ```
 
-O Vite usa o proxy da API em http://127.0.0.1:5002, então o backend precisa estar rodando (`./run.sh`). O build do frontend (`src/SprintFlow.Web/dist`) é copiado para o `wwwroot` do backend na compilação.
+O backend serve os arquivos de `web/` diretamente; basta recarregar a página após editar o frontend. `SPRINTFLOW_HOST` e `SPRINTFLOW_PORT` alteram o endereço (padrão `127.0.0.1:5002`). O `web/app.js` usa `// @ts-check` com JSDoc, sem etapa de build.
