@@ -1,12 +1,6 @@
-**/bin/
-**/obj/
-**/node_modules/
-src/SprintFlow.Web/dist/
-src/SprintFlow.Web/*.tsbuildinfo
-src/SprintFlow.Web/vite.config.js
-src/SprintFlow.Web/vite.config.d.ts
-src/SprintFlow.Api/appsettings.Local.json
-src/SprintFlow.Api/data/
+__pycache__/
+*.pyc
+appsettings.Local.json
 .ai/local/
 .run/
 .claude/settings.local.json

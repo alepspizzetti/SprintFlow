@@ -1,8 +1,8 @@
 # Code-Style
 
 - Funções e métodos próprios, incluindo auxiliares e testes, devem ter nomes em português do Brasil, sem acentos nos identificadores. 
-- Use PascalCase como padrão.
-- Preserve sufixos convencionais como `Async`.
+- Python: `snake_case` em funções e variáveis, `PascalCase` em classes. JavaScript: `camelCase`.
+- Use somente a biblioteca padrão do Python e JavaScript sem dependências; nova dependência precisa ser combinada.
 - Preserve o estilo do arquivo e as convenções existentes; não formate trechos fora do pedido.
 - Prefira corrigir a origem do dado ou da decisão. Evite compensações em outra camada.
 - Use a solução mais simples que atenda ao caso real; não introduza abstrações, opções ou dependências para necessidades hipotéticas.

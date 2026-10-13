@@ -21,6 +21,6 @@
 
 | Documento                                 | Quando ler                                                         |
 | ----------------------------------------- | ------------------------------------------------------------------ |
-| `.ai/skills/sprintflow-validate/SKILL.md` | selecionar e executar checks, build ou reinício                    |
+| `.ai/skills/sprintflow-validate/SKILL.md` | selecionar e executar checks, execução ou reinício                |
 | `.ai/skills/sprintflow-review/SKILL.md`   | revisar uma alteração local delimitada                             |
 | `.ai/skills/sprintflow-docs/SKILL.md`     | atualizar documentação após mudanças de estrutura ou comportamento |
