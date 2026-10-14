@@ -1,5 +1,12 @@
 __pycache__/
 *.pyc
+**/bin/
+**/obj/
+**/node_modules/
+src/SprintFlow.Web/dist/
+src/SprintFlow.Web/*.tsbuildinfo
+src/SprintFlow.Web/vite.config.js
+src/SprintFlow.Web/vite.config.d.ts
 appsettings.Local.json
 .ai/local/
 .run/
